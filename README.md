@@ -31,6 +31,12 @@ Developed by **Robert Andrew Stillwell** at [Enlightec Ltd.](https://www.enlight
   - [Automatic updates](#automatic-updates)
 - [Docker Hub Images](#docker-hub-images)
 - [Quick Start](#quick-start)
+- [Component Database & Loaders](#component-database--loaders)
+  - [The seven loaders](#the-seven-loaders)
+  - [Database schema](#database-schema)
+  - [CLI reference](#cli-reference)
+  - [REST endpoints](#rest-endpoints)
+  - [Web portal](#web-portal)
 - [REST API](#rest-api)
 - [Remote Access via ngrok](#remote-access-via-ngrok)
 - [Default Credentials](#default-credentials)
@@ -66,46 +72,9 @@ Developed by **Robert Andrew Stillwell** at [Enlightec Ltd.](https://www.enlight
 108-entry default DB including passives, semiconductors, op-amps (LM741, LM358, TL072, OPA2134), 7400-series TTL, 4000-series CMOS, voltage regulators, microcontrollers (ATmega328P, RP2040, STM32F4, ESP32), sensors, connectors. Extensible via `circuitforge/libs/*.json`.
 
 ### Cloud-loadable Component Database
-A SQLite-backed catalog (`data/components.db`) bulk-loaded from public
-sources for **hundreds of thousands of additional parts**:
-
-| Source       | Provides                                                | Auth                                         |
-|--------------|---------------------------------------------------------|----------------------------------------------|
-| `jlcpcb`     | ~500 k parts via the CC0 yaqwsx/jlcparts mirror         | none                                         |
-| `kicad`      | All symbols in `gitlab.com/kicad/libraries/kicad-symbols` | none (requires `git`)                      |
-| `digikey`    | DigiKey catalog                                         | `DIGIKEY_CLIENT_ID` + `DIGIKEY_CLIENT_SECRET` |
-| `mouser`     | Mouser catalog                                          | `MOUSER_API_KEY`                              |
-| `octopart`   | Octopart / Nexar GraphQL                                | `NEXAR_TOKEN`                                 |
-| `local`      | Bundled `circuitforge/libs/components.json`             | none                                          |
-
-The DB has SQLite FTS5 full-text search across `name`, `mpn`,
-`manufacturer`, `description`, `category`, `package`, and B-tree
-indexes on the common filter keys. Triggers keep FTS in sync on every
-upsert. Searchable from CLI, the REST API (`/api/v1/library/db`), and
-the web portal (`/library` paginates automatically once the DB has
-rows). See `circuitforge library sources` for the live list.
-
-```bash
-# pull the bundled set into the DB
-circuitforge library sync --source local
-# pull ~500k JLCPCB parts (takes a few minutes — large download)
-circuitforge library sync --source jlcpcb
-# search across everything ingested
-circuitforge library search "LM358 op-amp"
-circuitforge library search "" --package SOIC-8 --manufacturer "Texas Instruments"
-# stats + last syncs
-circuitforge library stats
-```
-
-REST endpoints (admin token required for `/sync`):
-
-```
-GET   /api/v1/library/db          ?q=&page=&page_size=&source=&category=&package=
-GET   /api/v1/library/db/<id>
-GET   /api/v1/library/db/stats
-GET   /api/v1/library/sources
-POST  /api/v1/library/sync        {source, limit?, clear?}
-```
+A SQLite-backed catalog (`data/components.db`) populated from seven
+public and proprietary sources. See [Component Database & Loaders](#component-database--loaders)
+below for the full reference.
 
 ### File Formats
 - **KiCAD v6** — `.kicad_sch`, `.kicad_pcb`, `.kicad_sym`, `.kicad_mod` (read + write)
@@ -280,6 +249,247 @@ python examples/build_pcb.py
 # Launch the browser portal
 ./start_web.sh                      # http://localhost:5000
 ```
+
+---
+
+## Component Database & Loaders
+
+CircuitForge ships with a 108-entry bundled JSON catalogue, but the real
+power is the **SQLite-backed component database** at `data/components.db`.
+It can be bulk-loaded from seven sources covering hundreds of thousands of
+parts, full-text-searched in milliseconds, and exposed via CLI, REST, or
+the web portal.
+
+The database lives in a single SQLite file (`data/components.db`,
+override with `CIRCUITFORGE_DB=…`). Its schema, FTS5 search index, and
+sync log are managed automatically — first use of any loader creates and
+migrates the file. WAL journaling lets the web portal read concurrently
+with a long-running sync.
+
+### The seven loaders
+
+Each loader implements `circuitforge.database.loaders.Loader.iter_records()`,
+yielding `ComponentRecord` objects that the DB upserts. List the live
+status with `circuitforge library sources` or
+`GET /api/v1/library/sources`.
+
+#### `jlcpcb` — JLCPCB / yaqwsx parts mirror
+
+| | |
+|---|---|
+| **Provides** | ~500 000 SMD-assembly parts with stock levels and price breaks |
+| **Source** | `https://yaqwsx.github.io/jlcparts/data/` (community CC0 mirror, refreshed daily) |
+| **Auth** | none |
+| **Network** | bulk JSON download (~hundreds of MB on first sync; cached for 24 h) |
+| **Pricing/stock** | yes (live snapshot from JLCPCB) |
+| **Datasheets** | yes (URLs to vendor PDFs) |
+| **Cache** | `data/loader_cache/jlcpcb/` (24 h TTL) |
+
+```bash
+circuitforge library sync --source jlcpcb              # full pull
+circuitforge library sync --source jlcpcb --limit 1000 # quick smoke test
+circuitforge library sync --source jlcpcb --clear      # wipe + re-pull
+```
+
+#### `kicad` — official KiCad symbol libraries
+
+| | |
+|---|---|
+| **Provides** | every symbol in `gitlab.com/kicad/libraries/kicad-symbols` (~30 000) |
+| **Source** | shallow `git clone --depth 1 …kicad-symbols.git` |
+| **Auth** | none (needs `git` on `PATH`) |
+| **Network** | ~200 MB on first sync; subsequent runs do `git pull --ff-only` |
+| **Pricing/stock** | no (these are symbols, not catalogue items) |
+| **Symbol/footprint refs** | yes — `symbol_lib` + `footprint_lib` columns populated for direct schematic placement |
+| **Optional** | set `CIRCUITFORGE_KICAD_FOOTPRINTS=1` to also clone `kicad-footprints` (~1 GB) |
+
+```bash
+circuitforge library sync --source kicad
+CIRCUITFORGE_KICAD_FOOTPRINTS=1 circuitforge library sync --source kicad
+```
+
+#### `digikey` — DigiKey REST API
+
+| | |
+|---|---|
+| **Provides** | DigiKey product catalog with parameters, pricing, stock |
+| **Source** | `https://api.digikey.com/products/v4/search/keyword` |
+| **Auth** | OAuth 2 client-credentials: `DIGIKEY_CLIENT_ID` + `DIGIKEY_CLIENT_SECRET` |
+| **Network** | per-query; ~50 records per call |
+| **Throttle** | 0.5 s between calls; cap with `DIGIKEY_MAX_PAGES` (default 100) |
+| **Keywords** | space-separated list in `DIGIKEY_KEYWORDS` (defaults to `resistor capacitor inductor mosfet op-amp microcontroller`) |
+| **Free tier** | ~1 000 calls/day |
+
+```bash
+export DIGIKEY_CLIENT_ID=…  DIGIKEY_CLIENT_SECRET=…
+export DIGIKEY_KEYWORDS="STM32 ESP32 ATmega"
+export DIGIKEY_MAX_PAGES=20
+circuitforge library sync --source digikey --limit 500
+```
+
+#### `mouser` — Mouser REST API
+
+| | |
+|---|---|
+| **Provides** | Mouser product catalog with parameters, pricing, datasheets |
+| **Source** | `https://api.mouser.com/api/v1/search/keyword` |
+| **Auth** | API key: `MOUSER_API_KEY` |
+| **Throttle** | 2.1 s between calls (≤30/min, the free-tier ceiling) |
+| **Keywords** | `MOUSER_KEYWORDS` (defaults to the same general electronics set) |
+| **Limit** | `MOUSER_MAX_RECORDS` per keyword (default 500) |
+| **Free tier** | ~1 000 calls/day |
+
+```bash
+export MOUSER_API_KEY=…
+circuitforge library sync --source mouser --limit 1000
+```
+
+#### `octopart` — Octopart / Nexar GraphQL
+
+| | |
+|---|---|
+| **Provides** | aggregator across many distributors; image + best datasheet URLs |
+| **Source** | `https://api.nexar.com/graphql/` |
+| **Auth** | bearer token: `NEXAR_TOKEN` |
+| **Throttle** | 1 s between queries |
+| **Keywords** | `OCTOPART_KEYWORDS` (default: `STM32 ESP32 ATmega LM358 NE555 LM7805`) |
+| **Free tier** | ~1 000 queries/month |
+
+```bash
+export NEXAR_TOKEN=…
+circuitforge library sync --source octopart --limit 200
+```
+
+#### `local` — bundled JSON catalogue
+
+| | |
+|---|---|
+| **Provides** | the 108 default parts shipped in `circuitforge/libs/components.json` |
+| **Network** | none — works offline |
+| **Use case** | seed the DB on first install so the web portal has something to show |
+
+```bash
+circuitforge library sync --source local
+```
+
+#### `all` — every available loader in one shot
+
+```bash
+circuitforge library sync --source all
+```
+
+Skips any loader whose `is_available()` returns false (e.g. an API loader
+with no credentials in the environment). Failures in one loader do not
+abort the others.
+
+### Database schema
+
+```text
+components
+  id              INTEGER PRIMARY KEY
+  source          TEXT    -- 'jlcpcb' | 'kicad' | 'digikey' | 'mouser' | 'octopart' | 'local'
+  source_id       TEXT    -- vendor's ID, unique per source
+  mpn             TEXT    -- manufacturer part number
+  manufacturer    TEXT
+  name            TEXT
+  description     TEXT
+  category        TEXT
+  subcategory     TEXT
+  package         TEXT    -- e.g. SOIC-8, 0805, LQFP-48
+  value           TEXT
+  pin_count       INTEGER
+  datasheet_url   TEXT
+  image_url       TEXT
+  stock           INTEGER
+  price_breaks    TEXT    -- JSON: [{"qty":1,"price":0.012}, …]
+  parameters      TEXT    -- JSON: free-form vendor attributes
+  symbol_lib      TEXT    -- KiCad symbol library name (for `kicad` source)
+  footprint_lib   TEXT    -- KiCad footprint library name
+  updated_at      INTEGER
+  UNIQUE(source, source_id)
+```
+
+Indexes are kept on `mpn`, `manufacturer`, `category`, `package`,
+`source`, and lower-cased `name` / `mpn` for case-insensitive lookup.
+A SQLite **FTS5** virtual table (`components_fts`) mirrors the
+searchable text columns (`name`, `mpn`, `manufacturer`, `description`,
+`category`, `package`) and is kept in sync by AFTER-INSERT / UPDATE /
+DELETE triggers — no manual reindex needed. Queries use prefix matching
+so `LM78` returns both `LM7805` and `LM7812`.
+
+A second table, `sync_log`, records every sync run with start/finish
+timestamps, counts added/updated, status (`ok` | `error`), and the error
+message if any. `circuitforge library stats` shows the last ten runs.
+
+### CLI reference
+
+```bash
+# List loaders and which are currently available
+circuitforge library sources
+
+# Pull from a single source (most options shown)
+circuitforge library sync --source jlcpcb \
+    --limit 10000 \         # cap records for testing
+    --clear \               # delete old rows from this source first
+    --db /path/to/other.db  # use a non-default DB file
+
+# Pull from every available loader
+circuitforge library sync --source all
+
+# Search the catalogue (full-text + structured filters)
+circuitforge library search "LM358 op-amp"
+circuitforge library search "" --source jlcpcb \
+                              --package SOIC-8 \
+                              --manufacturer "Texas Instruments" \
+                              --category integrated \
+                              --limit 50
+
+# Show one record by source:id or by MPN
+circuitforge library show local:NE555
+circuitforge library show NE555
+
+# Stats: row counts per source, top manufacturers, last 10 syncs
+circuitforge library stats
+```
+
+### REST endpoints
+
+All under `/api/v1/`; require a bearer JWT from `/auth/login`.
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET`  | `/library/sources`        | list loaders + availability + descriptions |
+| `GET`  | `/library/db`             | paginated full-text search of the DB |
+| `GET`  | `/library/db/<id>`        | single record by integer id |
+| `GET`  | `/library/db/stats`       | row counts, top manufacturers, sync log |
+| `POST` | `/library/sync`           | trigger a sync; admin-only |
+
+`/library/db` query parameters:
+
+| Param | Default | Description |
+|---|---|---|
+| `q` | (none) | full-text search across name/mpn/manufacturer/description |
+| `source` | (all) | filter by loader name |
+| `category` | (none) | substring match against `category` |
+| `package` | (none) | exact match |
+| `manufacturer` | (none) | exact match |
+| `page` | 1 | 1-based page index |
+| `page_size` | 50 | up to 200 |
+
+`POST /library/sync` body:
+
+```json
+{"source": "jlcpcb", "limit": 1000, "clear": false}
+```
+
+Returns `{source, added, updated, total}` on success.
+
+### Web portal
+
+`http://localhost:5000/library` automatically renders the DB-backed view
+once the catalogue has at least one row — colour-coded per-source badges
+on each row, pagination, source filter dropdown, click-through to vendor
+datasheets. Falls back to the bundled JSON view if the DB is empty.
 
 ---
 
