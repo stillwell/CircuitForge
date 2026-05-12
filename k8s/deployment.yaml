@@ -1,0 +1,155 @@
+# Kubernetes manifests for CircuitForge.
+# Two deployments (api + web), a service, an ingress, and a PVC for /data.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: circuitforge
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: circuitforge-data
+  namespace: circuitforge
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: circuitforge-secrets
+  namespace: circuitforge
+type: Opaque
+stringData:
+  CIRCUITFORGE_JWT_SECRET: please-replace-me
+  CIRCUITFORGE_SESSION_SECRET: please-replace-me-too
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: circuitforge-api
+  namespace: circuitforge
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: circuitforge-api }
+  template:
+    metadata:
+      labels: { app: circuitforge-api }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: api
+          image: stillwell/circuitforge:latest
+          args: ["api"]
+          ports: [{ containerPort: 8080 }]
+          env:
+            - name: PORT
+              value: "8080"
+            - name: CIRCUITFORGE_JWT_SECRET
+              valueFrom: { secretKeyRef: { name: circuitforge-secrets, key: CIRCUITFORGE_JWT_SECRET } }
+          readinessProbe:
+            httpGet: { path: /api/v1/health, port: 8080 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/v1/health, port: 8080 }
+            periodSeconds: 30
+          resources:
+            limits: { cpu: "1",   memory: 512Mi }
+            requests: { cpu: 50m, memory: 128Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: data, mountPath: /opt/circuitforge/data }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: circuitforge-data }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: circuitforge-web
+  namespace: circuitforge
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: circuitforge-web }
+  template:
+    metadata:
+      labels: { app: circuitforge-web }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: web
+          image: stillwell/circuitforge:latest
+          args: ["web", "--prod"]
+          ports: [{ containerPort: 5000 }]
+          env:
+            - name: PORT
+              value: "5000"
+            - name: CIRCUITFORGE_JWT_SECRET
+              valueFrom: { secretKeyRef: { name: circuitforge-secrets, key: CIRCUITFORGE_JWT_SECRET } }
+            - name: CIRCUITFORGE_SESSION_SECRET
+              valueFrom: { secretKeyRef: { name: circuitforge-secrets, key: CIRCUITFORGE_SESSION_SECRET } }
+          resources:
+            limits: { cpu: "1",   memory: 512Mi }
+            requests: { cpu: 50m, memory: 128Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: data, mountPath: /opt/circuitforge/data }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: circuitforge-data }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: circuitforge-api
+  namespace: circuitforge
+spec:
+  selector: { app: circuitforge-api }
+  ports: [{ port: 80, targetPort: 8080 }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: circuitforge-web
+  namespace: circuitforge
+spec:
+  selector: { app: circuitforge-web }
+  ports: [{ port: 80, targetPort: 5000 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: circuitforge
+  namespace: circuitforge
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 10m
+spec:
+  rules:
+    - host: circuitforge.example.com
+      http:
+        paths:
+          - path: /api/
+            pathType: Prefix
+            backend: { service: { name: circuitforge-api, port: { number: 80 } } }
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: circuitforge-web, port: { number: 80 } } }

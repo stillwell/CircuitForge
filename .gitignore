@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+build/
+dist/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Tests / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+
+# Runtime data (contains password hashes, ngrok URLs, etc.)
+data/
+install.log
+.update.lock.d/
+
+# Build artifacts from the PCB example
+examples/output/
+
+# Local secrets (never commit)
+*.env
+!.env.example
+secrets/

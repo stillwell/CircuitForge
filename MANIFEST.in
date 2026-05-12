@@ -1,0 +1,7 @@
+include README.md LICENSE AUTHORS SECURITY.md requirements.txt
+recursive-include images *.png
+recursive-include circuitforge/_resources *.png
+recursive-include circuitforge/libs *.json
+recursive-include circuitforge/web/templates *.html
+recursive-include circuitforge/web/static *
+recursive-include examples *.cir *.py

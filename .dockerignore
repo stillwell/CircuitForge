@@ -1,0 +1,14 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+*.pyo
+data
+install.log
+.update.lock.d
+examples/output
+docs/_build
+*.egg-info
+.pytest_cache
+# DO NOT exclude images/ — they ship with the runtime image

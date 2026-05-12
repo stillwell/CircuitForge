@@ -1,0 +1,45 @@
+# Docker Hub variant — pulls the published image instead of building.
+# Enable the optional ngrok profile with:
+#     docker compose -f docker-compose.hub.yml --profile ngrok up
+
+services:
+  api:
+    image: ${CIRCUITFORGE_IMAGE:-stillwell/circuitforge:latest}
+    container_name: circuitforge-api
+    command: api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - CIRCUITFORGE_JWT_SECRET=${CIRCUITFORGE_JWT_SECRET:?set me}
+      - CIRCUITFORGE_ALLOWED_ORIGINS=${CIRCUITFORGE_ALLOWED_ORIGINS:-*}
+    volumes:
+      - ./data:/opt/circuitforge/data
+
+  web:
+    image: ${CIRCUITFORGE_IMAGE:-stillwell/circuitforge:latest}
+    container_name: circuitforge-web
+    command: web
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - CIRCUITFORGE_SESSION_SECRET=${CIRCUITFORGE_SESSION_SECRET:?set me}
+      - CIRCUITFORGE_JWT_SECRET=${CIRCUITFORGE_JWT_SECRET:?set me}
+    depends_on:
+      - api
+
+  ngrok:
+    profiles: [ngrok]
+    image: ngrok/ngrok:latest
+    container_name: circuitforge-ngrok
+    restart: unless-stopped
+    command: http api:8080 --log stdout
+    env_file:
+      - ${HOME}/.config/medpharm/ngrok.env  # shared with MedPharm convention
+    ports:
+      - "4040:4040"   # local inspector
+    depends_on:
+      - api
+    volumes:
+      - ./data:/opt/circuitforge/data

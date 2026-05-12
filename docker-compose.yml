@@ -1,0 +1,39 @@
+# CircuitForge — local development stack. Builds the image from source.
+# For the published-image variant see docker-compose.hub.yml.
+
+services:
+  api:
+    build: .
+    image: circuitforge:latest
+    container_name: circuitforge-api
+    command: api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - CIRCUITFORGE_JWT_SECRET=${CIRCUITFORGE_JWT_SECRET:-dev-secret-please-override}
+      - CIRCUITFORGE_ALLOWED_ORIGINS=${CIRCUITFORGE_ALLOWED_ORIGINS:-*}
+    volumes:
+      - ./data:/opt/circuitforge/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/v1/health')"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  web:
+    build: .
+    image: circuitforge:latest
+    container_name: circuitforge-web
+    command: web
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - CIRCUITFORGE_SESSION_SECRET=${CIRCUITFORGE_SESSION_SECRET:-please-override}
+      - CIRCUITFORGE_JWT_SECRET=${CIRCUITFORGE_JWT_SECRET:-dev-secret-please-override}
+      - PORT=5000
+    volumes:
+      - ./data:/opt/circuitforge/data
+    depends_on:
+      - api

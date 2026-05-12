@@ -1,0 +1,44 @@
+[Unit]
+Description=CircuitForge REST API
+Documentation=https://github.com/stillwell/circuitforge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=circuitforge
+Group=circuitforge
+WorkingDirectory=/opt/circuitforge
+EnvironmentFile=-/etc/circuitforge/api.env
+ExecStart=/opt/circuitforge/.venv/bin/python /opt/circuitforge/run_cloud.py
+Restart=on-failure
+RestartSec=5
+
+# Sandboxing — mirrors MedPharm ERP hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+PrivateTmp=true
+PrivateDevices=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/opt/circuitforge/data
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

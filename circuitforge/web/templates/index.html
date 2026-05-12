@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Simulator — CircuitForge{% endblock %}
+{% block content %}
+<section class="grid">
+  <div class="card">
+    <h2>SPICE deck</h2>
+    <form id="sim-form">
+      <textarea id="deck" name="deck" rows="14" spellcheck="false">RC low-pass filter
+V1 in 0 SIN(0 1 1k 0 0 0)
+R1 in out 1k
+C1 out 0 100n
+.end
+</textarea>
+      <div class="row">
+        <label>Analysis
+          <select id="analysis" name="analysis">
+            <option value="op">DC operating point</option>
+            <option value="tran" selected>Transient</option>
+            <option value="ac">AC sweep</option>
+            <option value="dc">DC sweep</option>
+          </select>
+        </label>
+        <fieldset class="ana ana-tran">
+          <label>tstop <input name="tstop" value="5m"></label>
+          <label>dt <input name="dt" value="10u"></label>
+        </fieldset>
+        <fieldset class="ana ana-ac hidden">
+          <label>fstart <input name="fstart" value="10"></label>
+          <label>fstop <input name="fstop" value="100k"></label>
+          <label>pts/dec <input name="ppd" value="20"></label>
+        </fieldset>
+        <fieldset class="ana ana-dc hidden">
+          <label>source <input name="source" value="V1"></label>
+          <label>start <input name="start" value="0"></label>
+          <label>stop <input name="stop" value="5"></label>
+          <label>step <input name="step" value="0.1"></label>
+        </fieldset>
+      </div>
+      <button type="submit">Run simulation</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Waveforms</h2>
+    <div class="row">
+      <label>Trace
+        <select id="trace-pick"></select>
+      </label>
+      <span id="status"></span>
+    </div>
+    <canvas id="scope" width="600" height="320"></canvas>
+  </div>
+</section>
+
+<script src="{{ url_for('static', filename='scope.js') }}"></script>
+{% endblock %}

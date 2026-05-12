@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Help — CircuitForge{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>User Guide</h1>
+
+  <h2>Simulator</h2>
+  <p>Edit a SPICE deck in the left pane. Pick an analysis (DC operating point,
+     transient, AC sweep, DC sweep) and click <b>Run simulation</b>. Results
+     appear in the right pane. Multiple traces are available via the trace
+     selector.</p>
+
+  <h2>SPICE syntax</h2>
+  <p>CircuitForge accepts a useful subset of SPICE2/3 syntax:</p>
+  <ul>
+    <li><code>Rxxx n1 n2 value</code> — resistor</li>
+    <li><code>Cxxx n1 n2 value [IC=v]</code> — capacitor</li>
+    <li><code>Lxxx n1 n2 value [IC=i]</code> — inductor</li>
+    <li><code>Vxxx n+ n- value | SIN(...) | PULSE(...) | PWL(...) | AC mag</code> — voltage source</li>
+    <li><code>Ixxx n+ n- value</code> — current source</li>
+    <li><code>Dxxx n+ n- model</code> — diode</li>
+    <li><code>Qxxx nc nb ne model</code> — BJT</li>
+    <li><code>Mxxx nd ng ns nb model</code> — MOSFET</li>
+  </ul>
+
+  <h2>Library</h2>
+  <p>Browse the bundled component library on the <a href="{{ url_for('library') }}">Library</a> page.
+     108 entries cover passives, semiconductors, op-amps, 7400/4000-series logic,
+     microcontrollers, sensors, and connectors.</p>
+
+  <h2>REST API</h2>
+  <p>Every action available in this portal is also available via the REST API
+     at <code>/api/v1/</code>. See the <code>README.md</code> for the endpoint
+     index and authentication flow.</p>
+
+  <h2>Default credentials</h2>
+  <p>The first run creates an <code>admin</code> account with password
+     <code>admin</code>. Replace it immediately by
+     <code>POST /api/v1/auth/register</code> as the admin user.</p>
+
+  <h2>License &amp; support</h2>
+  <p>CircuitForge is licensed under the
+     <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GNU GPL v3 or later</a>.
+     Copyright &copy; 2026 <a href="https://www.enlightec.com">Enlightec Ltd.</a>
+     This program comes with <b>ABSOLUTELY NO WARRANTY</b>;
+     redistribution is permitted under the terms of the GPL — see the
+     <code>LICENSE</code> file or run <code>circuitforge --show-w</code> /
+     <code>--show-c</code>.</p>
+  <p>For commercial support, custom development, or licensing inquiries:
+     <a href="mailto:andrew.stillwell@enlightec.com">andrew.stillwell@enlightec.com</a>
+     (Robert Andrew Stillwell, Enlightec Ltd.).
+     Security disclosures: see <code>SECURITY.md</code>.</p>
+</section>
+{% endblock %}

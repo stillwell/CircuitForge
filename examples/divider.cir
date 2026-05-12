@@ -1,0 +1,6 @@
+Resistor divider
+V1 vin 0 5
+R1 vin mid 10k
+R2 mid 0 10k
+.op
+.end

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Library — CircuitForge{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Component library</h1>
+  <form method="get" class="row">
+    <input name="q" value="{{ query }}" placeholder="Search…">
+    <button>Search</button>
+    <span class="hint">{{ entries|length }} of {{ total }} entries</span>
+  </form>
+  <table class="lib">
+    <thead><tr>
+      <th>Kind</th><th>Name</th><th>Value</th><th>Footprint</th><th>Description</th>
+    </tr></thead>
+    <tbody>
+      {% for e in entries %}
+        <tr>
+          <td><span class="kind {{ e.kind }}">{{ e.kind }}</span></td>
+          <td><code>{{ e.name }}</code></td>
+          <td>{{ e.value or "" }}</td>
+          <td>{{ e.footprint or "" }}</td>
+          <td>{{ e.description }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

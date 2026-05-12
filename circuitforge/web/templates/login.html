@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Login — CircuitForge{% endblock %}
+{% block content %}
+<section class="card narrow login-card">
+  <img src="{{ url_for('image', name='enlightec-ltd-circuit-forge.png') }}"
+       alt="CircuitForge — Enlightec Ltd." class="login-banner">
+  <h1>Sign in</h1>
+  <form method="post">
+    <label>Username
+      <input name="username" autofocus required>
+    </label>
+    <label>Password
+      <input name="password" type="password" required>
+    </label>
+    <button type="submit">Sign in</button>
+  </form>
+  <p class="hint">Default credentials: <code>admin</code> / <code>admin</code>.
+     Change them via the API after first login.</p>
+</section>
+{% endblock %}
