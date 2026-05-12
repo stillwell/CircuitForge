@@ -162,6 +162,86 @@ def _register_routes(app):
             return jsonify({"error": "not found"}), 404
         return jsonify(_lib_entry(e))
 
+    # ---- DB-backed library (millions of parts) ----
+    @app.route("/api/v1/library/db")
+    @require_auth
+    def library_db_search():
+        from circuitforge.database import ComponentDB
+        from dataclasses import asdict
+        db = ComponentDB()
+        try:
+            q = request.args.get("q", "")
+            page = max(1, int(request.args.get("page", 1)))
+            page_size = min(200, max(1, int(request.args.get("page_size", 50))))
+            offset = (page - 1) * page_size
+            results = db.search(q,
+                                source=request.args.get("source"),
+                                category=request.args.get("category"),
+                                package=request.args.get("package"),
+                                manufacturer=request.args.get("manufacturer"),
+                                limit=page_size, offset=offset)
+            return jsonify({
+                "page": page, "page_size": page_size,
+                "total": db.count(), "returned": len(results),
+                "results": [asdict(r) for r in results],
+            })
+        finally:
+            db.close()
+
+    @app.route("/api/v1/library/db/<int:rec_id>")
+    @require_auth
+    def library_db_get(rec_id):
+        from circuitforge.database import ComponentDB
+        from dataclasses import asdict
+        with ComponentDB() as db:
+            rec = db.get_by_id(rec_id)
+            if rec is None:
+                return jsonify({"error": "not found"}), 404
+            return jsonify(asdict(rec))
+
+    @app.route("/api/v1/library/db/stats")
+    @require_auth
+    def library_db_stats():
+        from circuitforge.database import ComponentDB
+        with ComponentDB() as db:
+            return jsonify(db.stats())
+
+    @app.route("/api/v1/library/sources")
+    @require_auth
+    def library_sources():
+        from circuitforge.database.loaders import LOADERS
+        out = []
+        for name, cls in LOADERS.items():
+            inst = cls()
+            out.append({"name": name,
+                        "description": cls.description,
+                        "available": inst.is_available(),
+                        "requires_internet": cls.requires_internet})
+        return jsonify({"sources": out})
+
+    @app.route("/api/v1/library/sync", methods=["POST"])
+    @require_auth
+    def library_sync():
+        if g.claims.get("role") != "admin":
+            return jsonify({"error": "admin only"}), 403
+        body = request.get_json(silent=True) or {}
+        src = body.get("source", "local")
+        limit = body.get("limit")
+        clear = bool(body.get("clear"))
+        from circuitforge.database import ComponentDB, get_loader
+        with ComponentDB() as db:
+            loader = get_loader(src)()
+            if not loader.is_available():
+                return jsonify({"error": f"loader {src} not configured"}), 400
+            if clear:
+                db.clear_source(src)
+            try:
+                added, updated = loader.sync(db, limit=limit)
+            except Exception as e:
+                return jsonify({"error": str(e), "type": type(e).__name__}), 500
+            return jsonify({"source": src, "added": added,
+                            "updated": updated, "total": db.count(src)})
+
     # ---- simulation ----
     @app.route("/api/v1/simulate/op", methods=["POST"])
     @require_auth

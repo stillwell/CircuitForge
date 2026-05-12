@@ -71,6 +71,15 @@ table.lib th { color: var(--muted); font-weight: 500;
 .kind.source { background: rgba(255,115,115,.15); color: var(--error); }
 .kind.mechanical { background: rgba(150,150,150,.15); color: #aaa; }
 .hint { color: var(--muted); font-size: 12px; }
+.pager { display: flex; gap: 16px; align-items: center; justify-content: center;
+         margin-top: 16px; color: var(--muted); }
+.pager a { font-weight: 600; }
+.kind.jlcpcb     { background: rgba(78,209,197,.15); color: var(--accent); }
+.kind.kicad      { background: rgba(180,140,255,.15); color: #b48cff; }
+.kind.digikey    { background: rgba(255,170,0,.15);  color: #ffaa00; }
+.kind.mouser     { background: rgba(255,115,115,.15); color: var(--error); }
+.kind.octopart   { background: rgba(110,231,183,.15); color: var(--good); }
+.kind.local      { background: rgba(150,150,150,.15); color: #aaa; }
 
 canvas { background: #06080f; border-radius: 4px; width: 100%;
          border: 1px solid var(--line); }

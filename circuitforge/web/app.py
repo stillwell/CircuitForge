@@ -96,13 +96,37 @@ def create_app(config=None):
     def library():
         if not session.get("user"):
             return redirect(url_for("login"))
+        # Prefer the DB-backed catalog if it has any rows; fall back to JSON.
+        try:
+            from circuitforge.database import ComponentDB
+            from dataclasses import asdict
+            with ComponentDB() as db:
+                total = db.count()
+                if total > 0:
+                    page = max(1, int(request.args.get("page", 1)))
+                    page_size = 50
+                    q = request.args.get("q", "")
+                    src = request.args.get("source") or None
+                    rows = db.search(q, source=src,
+                                     limit=page_size, offset=(page - 1) * page_size)
+                    return render_template(
+                        "library.html",
+                        entries=None,
+                        db_rows=[asdict(r) for r in rows],
+                        sources=db.sources(),
+                        page=page, page_size=page_size,
+                        total=total, query=q, selected_source=src)
+        except Exception:
+            pass
         from circuitforge.components.library import ComponentLibrary
         lib = ComponentLibrary().load_default()
         q = request.args.get("q", "")
         entries = lib.search(q) if q else list(lib)
         entries = sorted(entries, key=lambda e: (e.kind, e.name))
         return render_template("library.html", entries=entries,
-                               total=len(lib), query=q)
+                               total=len(lib), query=q,
+                               db_rows=None, sources=[], page=1, page_size=999,
+                               selected_source=None)
 
     @app.route("/help")
     def help_page():

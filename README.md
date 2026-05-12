@@ -65,6 +65,48 @@ Developed by **Robert Andrew Stillwell** at [Enlightec Ltd.](https://www.enlight
 ### Component Library
 108-entry default DB including passives, semiconductors, op-amps (LM741, LM358, TL072, OPA2134), 7400-series TTL, 4000-series CMOS, voltage regulators, microcontrollers (ATmega328P, RP2040, STM32F4, ESP32), sensors, connectors. Extensible via `circuitforge/libs/*.json`.
 
+### Cloud-loadable Component Database
+A SQLite-backed catalog (`data/components.db`) bulk-loaded from public
+sources for **hundreds of thousands of additional parts**:
+
+| Source       | Provides                                                | Auth                                         |
+|--------------|---------------------------------------------------------|----------------------------------------------|
+| `jlcpcb`     | ~500 k parts via the CC0 yaqwsx/jlcparts mirror         | none                                         |
+| `kicad`      | All symbols in `gitlab.com/kicad/libraries/kicad-symbols` | none (requires `git`)                      |
+| `digikey`    | DigiKey catalog                                         | `DIGIKEY_CLIENT_ID` + `DIGIKEY_CLIENT_SECRET` |
+| `mouser`     | Mouser catalog                                          | `MOUSER_API_KEY`                              |
+| `octopart`   | Octopart / Nexar GraphQL                                | `NEXAR_TOKEN`                                 |
+| `local`      | Bundled `circuitforge/libs/components.json`             | none                                          |
+
+The DB has SQLite FTS5 full-text search across `name`, `mpn`,
+`manufacturer`, `description`, `category`, `package`, and B-tree
+indexes on the common filter keys. Triggers keep FTS in sync on every
+upsert. Searchable from CLI, the REST API (`/api/v1/library/db`), and
+the web portal (`/library` paginates automatically once the DB has
+rows). See `circuitforge library sources` for the live list.
+
+```bash
+# pull the bundled set into the DB
+circuitforge library sync --source local
+# pull ~500k JLCPCB parts (takes a few minutes — large download)
+circuitforge library sync --source jlcpcb
+# search across everything ingested
+circuitforge library search "LM358 op-amp"
+circuitforge library search "" --package SOIC-8 --manufacturer "Texas Instruments"
+# stats + last syncs
+circuitforge library stats
+```
+
+REST endpoints (admin token required for `/sync`):
+
+```
+GET   /api/v1/library/db          ?q=&page=&page_size=&source=&category=&package=
+GET   /api/v1/library/db/<id>
+GET   /api/v1/library/db/stats
+GET   /api/v1/library/sources
+POST  /api/v1/library/sync        {source, limit?, clear?}
+```
+
 ### File Formats
 - **KiCAD v6** — `.kicad_sch`, `.kicad_pcb`, `.kicad_sym`, `.kicad_mod` (read + write)
 - **Eagle** — `.sch`, `.brd` (read, partial)

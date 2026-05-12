@@ -94,8 +94,30 @@ def main(argv=None):
     p_bom.add_argument("input")
     p_bom.add_argument("-o", "--output", required=True)
 
-    p_lib = sub.add_parser("library", help="Inspect the component library")
-    p_lib.add_argument("query", nargs="?", default="")
+    p_lib = sub.add_parser("library",
+                           help="Component database / library (sync, search, show, stats)")
+    lib_sub = p_lib.add_subparsers(dest="lib_command")
+    lp = lib_sub.add_parser("sync", help="Pull component data from a source into the DB")
+    lp.add_argument("--source", default="local",
+                    help="Source name: jlcpcb | kicad | digikey | mouser | octopart | local | all")
+    lp.add_argument("--limit", type=int, help="Cap records ingested (for testing)")
+    lp.add_argument("--db", help="SQLite path (default: data/components.db)")
+    lp.add_argument("--clear", action="store_true",
+                    help="Delete existing rows for this source before sync")
+    lp = lib_sub.add_parser("search", help="Full-text search the catalog")
+    lp.add_argument("query")
+    lp.add_argument("--source")
+    lp.add_argument("--category")
+    lp.add_argument("--package")
+    lp.add_argument("--manufacturer")
+    lp.add_argument("--limit", type=int, default=20)
+    lp.add_argument("--db")
+    lp = lib_sub.add_parser("show", help="Show one record by source/id or by MPN")
+    lp.add_argument("identifier", help="<source>:<id> or an MPN substring")
+    lp.add_argument("--db")
+    lp = lib_sub.add_parser("stats", help="DB statistics (rows, sources, manufacturers)")
+    lp.add_argument("--db")
+    lp = lib_sub.add_parser("sources", help="List configured loaders and availability")
 
     p_gui = sub.add_parser("gui", help="Launch GUI")
 
@@ -242,16 +264,106 @@ def _cmd_bom(args):
 
 
 def _cmd_library(args):
-    from circuitforge.components.library import ComponentLibrary
-    lib = ComponentLibrary().load_default()
-    entries = lib.search(args.query) if args.query else list(lib)
-    if not entries:
-        print("(no matches)")
-        return 1
-    for e in sorted(entries, key=lambda x: (x.kind, x.name)):
-        print(f"  {e.kind:14s} {e.name:24s} {e.description}")
-    print(f"Total: {len(entries)} of {len(lib)}")
-    return 0
+    cmd = getattr(args, "lib_command", None)
+    if cmd is None:
+        print("Usage: circuitforge library {sync,search,show,stats,sources} …")
+        print("       Run `circuitforge library --help` for details.")
+        return 2
+
+    from circuitforge.database import ComponentDB, get_loader, LOADERS
+
+    if cmd == "sources":
+        print(f"{'NAME':10s} {'AVAIL':6s} DESCRIPTION")
+        for name, cls in LOADERS.items():
+            inst = cls()
+            print(f"{name:10s} {'yes' if inst.is_available() else 'no':6s} {cls.description}")
+        return 0
+
+    db = ComponentDB(path=args.db)
+
+    if cmd == "sync":
+        sources = list(LOADERS) if args.source == "all" else [args.source]
+        total_added = total_updated = 0
+        for src in sources:
+            try:
+                loader = get_loader(src)()
+            except Exception as e:
+                print(f"[{src}] {e}"); continue
+            if not loader.is_available():
+                print(f"[{src}] not available (likely missing API key); skipping")
+                continue
+            if args.clear:
+                db.clear_source(src)
+                print(f"[{src}] cleared previous rows")
+            print(f"[{src}] starting sync …")
+            def progress(n, src=src):
+                if n and n % 5000 == 0:
+                    sys.stderr.write(f"\r[{src}] {n} records …")
+                    sys.stderr.flush()
+            try:
+                added, updated = loader.sync(db, limit=args.limit, progress=progress)
+            except Exception as e:
+                print(f"\n[{src}] FAILED: {e}"); continue
+            sys.stderr.write("\r")
+            print(f"[{src}] +{added} new, ~{updated} updated. total now {db.count(src)}")
+            total_added += added; total_updated += updated
+        print(f"Done. +{total_added} new, ~{total_updated} updated across all sources.")
+        return 0
+
+    if cmd == "search":
+        results = db.search(args.query, source=args.source,
+                            category=args.category, package=args.package,
+                            manufacturer=args.manufacturer, limit=args.limit)
+        if not results:
+            print("(no matches)"); return 1
+        for r in results:
+            line = f"  [{r.source}] {r.mpn or r.name:24s} {r.manufacturer:18.18s} "
+            line += f"{r.package:10.10s} stock={r.stock:>6d}  {r.description[:60]}"
+            print(line)
+        print(f"\n{len(results)} of {db.count()} total in DB")
+        return 0
+
+    if cmd == "show":
+        ident = args.identifier
+        if ":" in ident:
+            src, sid = ident.split(":", 1)
+            rec = db.get(src, sid)
+            records = [rec] if rec else []
+        else:
+            records = db.get_by_mpn(ident)
+        if not records:
+            print(f"no record matching {ident!r}"); return 1
+        import json as _j
+        for r in records:
+            print(_j.dumps(_record_to_dict(r), indent=2))
+        return 0
+
+    if cmd == "stats":
+        s = db.stats()
+        print(f"Total components: {s['total']}")
+        print(f"Schema version: {s['schema_version']}")
+        print("\nBy source:")
+        for src, n in s["by_source"].items():
+            print(f"  {src:12s} {n:>10d}")
+        if s["top_manufacturers"]:
+            print("\nTop manufacturers:")
+            for m, n in list(s["top_manufacturers"].items())[:10]:
+                print(f"  {m[:40]:40s} {n:>8d}")
+        if s["last_syncs"]:
+            print("\nLast 10 syncs:")
+            print(f"  {'source':10s} {'status':8s} {'+added':>8s} {'~upd':>8s}  when")
+            for row in s["last_syncs"]:
+                import datetime
+                when = datetime.datetime.fromtimestamp(row["started_at"]).isoformat(" ")
+                print(f"  {row['source']:10s} {row['status']:8s} "
+                      f"{row['records_added']:>8d} {row['records_updated']:>8d}  {when}")
+        return 0
+    return 2
+
+
+def _record_to_dict(r):
+    from dataclasses import asdict
+    return asdict(r)
 
 
 def _cmd_gui(args):

@@ -3,26 +3,88 @@
 {% block content %}
 <section class="card">
   <h1>Component library</h1>
+
   <form method="get" class="row">
-    <input name="q" value="{{ query }}" placeholder="Search…">
-    <button>Search</button>
-    <span class="hint">{{ entries|length }} of {{ total }} entries</span>
-  </form>
-  <table class="lib">
-    <thead><tr>
-      <th>Kind</th><th>Name</th><th>Value</th><th>Footprint</th><th>Description</th>
-    </tr></thead>
-    <tbody>
-      {% for e in entries %}
-        <tr>
-          <td><span class="kind {{ e.kind }}">{{ e.kind }}</span></td>
-          <td><code>{{ e.name }}</code></td>
-          <td>{{ e.value or "" }}</td>
-          <td>{{ e.footprint or "" }}</td>
-          <td>{{ e.description }}</td>
-        </tr>
+    <input name="q" value="{{ query }}" placeholder="Search by name, MPN, manufacturer, description…">
+    {% if sources %}
+    <select name="source">
+      <option value="">(all sources)</option>
+      {% for s in sources %}
+        <option value="{{ s }}" {% if s == selected_source %}selected{% endif %}>{{ s }}</option>
       {% endfor %}
-    </tbody>
-  </table>
+    </select>
+    {% endif %}
+    <button>Search</button>
+    <span class="hint">
+      {% if db_rows is not none %}
+        {{ db_rows|length }} of {{ total }} entries (DB-backed)
+      {% else %}
+        {{ entries|length }} of {{ total }} entries (bundled JSON)
+      {% endif %}
+    </span>
+  </form>
+
+  {% if db_rows is not none %}
+    <table class="lib">
+      <thead><tr>
+        <th>Source</th><th>MPN / Name</th><th>Manufacturer</th>
+        <th>Package</th><th>Stock</th><th>Description</th>
+      </tr></thead>
+      <tbody>
+        {% for r in db_rows %}
+          <tr>
+            <td><span class="kind {{ r.source }}">{{ r.source }}</span></td>
+            <td>
+              {% if r.datasheet_url %}
+                <a href="{{ r.datasheet_url }}" target="_blank" rel="noopener">
+                  <code>{{ r.mpn or r.name }}</code></a>
+              {% else %}
+                <code>{{ r.mpn or r.name }}</code>
+              {% endif %}
+            </td>
+            <td>{{ r.manufacturer }}</td>
+            <td>{{ r.package }}</td>
+            <td>{{ r.stock }}</td>
+            <td>{{ r.description }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <nav class="pager">
+      {% if page > 1 %}
+        <a href="?{% if query %}q={{ query }}&{% endif %}{% if selected_source %}source={{ selected_source }}&{% endif %}page={{ page - 1 }}">← Previous</a>
+      {% endif %}
+      <span>Page {{ page }}</span>
+      {% if db_rows|length == page_size %}
+        <a href="?{% if query %}q={{ query }}&{% endif %}{% if selected_source %}source={{ selected_source }}&{% endif %}page={{ page + 1 }}">Next →</a>
+      {% endif %}
+    </nav>
+
+  {% else %}
+    <table class="lib">
+      <thead><tr>
+        <th>Kind</th><th>Name</th><th>Value</th><th>Footprint</th><th>Description</th>
+      </tr></thead>
+      <tbody>
+        {% for e in entries %}
+          <tr>
+            <td><span class="kind {{ e.kind }}">{{ e.kind }}</span></td>
+            <td><code>{{ e.name }}</code></td>
+            <td>{{ e.value or "" }}</td>
+            <td>{{ e.footprint or "" }}</td>
+            <td>{{ e.description }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <p class="hint">
+      The bundled catalogue ships with {{ total }} entries.
+      For the full database (hundreds of thousands of parts), run:<br>
+      <code>circuitforge library sync --source jlcpcb</code> &nbsp;or&nbsp;
+      <code>--source local</code> for the bundled set.
+    </p>
+  {% endif %}
 </section>
 {% endblock %}
