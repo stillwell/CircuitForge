@@ -81,6 +81,21 @@ table.lib th { color: var(--muted); font-weight: 500;
 .kind.octopart   { background: rgba(110,231,183,.15); color: var(--good); }
 .kind.local      { background: rgba(150,150,150,.15); color: #aaa; }
 
+.vendor-links { white-space: nowrap; }
+.vendor-link {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; margin: 0 2px;
+  border-radius: 4px; vertical-align: middle;
+  transition: transform .08s ease, box-shadow .08s ease;
+  border: 1px solid rgba(255,255,255,.05);
+}
+.vendor-link:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0,0,0,.4);
+  text-decoration: none;
+}
+.vendor-link img { display: block; }
+
 canvas { background: #06080f; border-radius: 4px; width: 100%;
          border: 1px solid var(--line); }
 #status { color: var(--muted); font-size: 12px; flex: 0; }

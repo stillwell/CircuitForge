@@ -166,7 +166,7 @@ def _register_routes(app):
     @app.route("/api/v1/library/db")
     @require_auth
     def library_db_search():
-        from circuitforge.database import ComponentDB
+        from circuitforge.database import ComponentDB, vendor_links
         from dataclasses import asdict
         db = ComponentDB()
         try:
@@ -180,10 +180,15 @@ def _register_routes(app):
                                 package=request.args.get("package"),
                                 manufacturer=request.args.get("manufacturer"),
                                 limit=page_size, offset=offset)
+            payload = []
+            for r in results:
+                d = asdict(r)
+                d["vendor_links"] = vendor_links(r)
+                payload.append(d)
             return jsonify({
                 "page": page, "page_size": page_size,
                 "total": db.count(), "returned": len(results),
-                "results": [asdict(r) for r in results],
+                "results": payload,
             })
         finally:
             db.close()
@@ -191,13 +196,15 @@ def _register_routes(app):
     @app.route("/api/v1/library/db/<int:rec_id>")
     @require_auth
     def library_db_get(rec_id):
-        from circuitforge.database import ComponentDB
+        from circuitforge.database import ComponentDB, vendor_links
         from dataclasses import asdict
         with ComponentDB() as db:
             rec = db.get_by_id(rec_id)
             if rec is None:
                 return jsonify({"error": "not found"}), 404
-            return jsonify(asdict(rec))
+            d = asdict(rec)
+            d["vendor_links"] = vendor_links(rec)
+            return jsonify(d)
 
     @app.route("/api/v1/library/db/stats")
     @require_auth

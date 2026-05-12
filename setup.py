@@ -20,7 +20,7 @@ _long = open(_readme, encoding="utf-8").read() if os.path.exists(_readme) else "
 
 setup(
     name="circuitforge",
-    version="0.2.0",
+    version="0.2.1",
     description="Open-source EDA suite: schematic capture, SPICE simulation, PCB layout.",
     long_description=_long,
     long_description_content_type="text/markdown",
@@ -43,7 +43,8 @@ setup(
     include_package_data=True,
     package_data={
         "circuitforge": ["_resources/*.png", "libs/*.json",
-                         "web/templates/*.html", "web/static/*"],
+                         "web/templates/*.html", "web/static/*",
+                         "web/static/vendor-icons/*.svg"],
     },
     install_requires=[
         "numpy>=1.21",

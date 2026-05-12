@@ -98,7 +98,7 @@ def create_app(config=None):
             return redirect(url_for("login"))
         # Prefer the DB-backed catalog if it has any rows; fall back to JSON.
         try:
-            from circuitforge.database import ComponentDB
+            from circuitforge.database import ComponentDB, vendor_links
             from dataclasses import asdict
             with ComponentDB() as db:
                 total = db.count()
@@ -109,10 +109,15 @@ def create_app(config=None):
                     src = request.args.get("source") or None
                     rows = db.search(q, source=src,
                                      limit=page_size, offset=(page - 1) * page_size)
+                    payload = []
+                    for r in rows:
+                        d = asdict(r)
+                        d["vendor_links"] = vendor_links(r)
+                        payload.append(d)
                     return render_template(
                         "library.html",
                         entries=None,
-                        db_rows=[asdict(r) for r in rows],
+                        db_rows=payload,
                         sources=db.sources(),
                         page=page, page_size=page_size,
                         total=total, query=q, selected_source=src)

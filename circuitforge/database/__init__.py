@@ -9,6 +9,8 @@ Stdlib-only: `sqlite3`, `urllib.request`, `csv`, `json`, `subprocess`.
 
 from .components_db import ComponentDB, ComponentRecord, default_db_path
 from .loaders import LOADERS, get_loader
+from .vendor_urls import vendor_links, VENDOR_META
 
 __all__ = ["ComponentDB", "ComponentRecord", "default_db_path",
-           "LOADERS", "get_loader"]
+           "LOADERS", "get_loader",
+           "vendor_links", "VENDOR_META"]

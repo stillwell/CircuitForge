@@ -29,23 +29,28 @@
       <thead><tr>
         <th>Source</th><th>MPN / Name</th><th>Manufacturer</th>
         <th>Package</th><th>Stock</th><th>Description</th>
+        <th>Vendor links</th>
       </tr></thead>
       <tbody>
         {% for r in db_rows %}
           <tr>
             <td><span class="kind {{ r.source }}">{{ r.source }}</span></td>
-            <td>
-              {% if r.datasheet_url %}
-                <a href="{{ r.datasheet_url }}" target="_blank" rel="noopener">
-                  <code>{{ r.mpn or r.name }}</code></a>
-              {% else %}
-                <code>{{ r.mpn or r.name }}</code>
-              {% endif %}
-            </td>
+            <td><code>{{ r.mpn or r.name }}</code></td>
             <td>{{ r.manufacturer }}</td>
             <td>{{ r.package }}</td>
             <td>{{ r.stock }}</td>
             <td>{{ r.description }}</td>
+            <td class="vendor-links">
+              {% for lk in r.vendor_links %}
+                <a class="vendor-link"
+                   href="{{ lk.url }}"
+                   target="_blank" rel="noopener noreferrer"
+                   title="{{ lk.label }}">
+                  <img src="{{ url_for('static', filename='vendor-icons/' + lk.icon + '.svg') }}"
+                       alt="{{ lk.label }}" width="20" height="20">
+                </a>
+              {% endfor %}
+            </td>
           </tr>
         {% endfor %}
       </tbody>

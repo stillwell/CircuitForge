@@ -334,8 +334,17 @@ def _cmd_library(args):
         if not records:
             print(f"no record matching {ident!r}"); return 1
         import json as _j
+        from circuitforge.database import vendor_links
         for r in records:
-            print(_j.dumps(_record_to_dict(r), indent=2))
+            d = _record_to_dict(r)
+            links = vendor_links(r)
+            d["vendor_links"] = links
+            print(_j.dumps(d, indent=2))
+            if links:
+                print("\nVendor links:")
+                for lk in links:
+                    print(f"  [{lk['label']:30s}] {lk['url']}")
+            print()
         return 0
 
     if cmd == "stats":
