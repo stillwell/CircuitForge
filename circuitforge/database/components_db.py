@@ -186,6 +186,15 @@ class ComponentDB:
             CREATE INDEX IF NOT EXISTS idx_components_source      ON components(source);
             CREATE INDEX IF NOT EXISTS idx_components_name_lower  ON components(lower(name));
             CREATE INDEX IF NOT EXISTS idx_components_mpn_lower   ON components(lower(mpn));
+            -- Covering indices for the paginated list view. Without these,
+            -- "ORDER BY stock DESC, name ASC LIMIT 50" on a multi-million-row
+            -- table forces a full in-memory sort (~40 s on 4M rows). The
+            -- (source, stock DESC, name) form lets SQLite walk the index
+            -- and stop after `limit` rows.
+            CREATE INDEX IF NOT EXISTS idx_components_stock_name
+                ON components(stock DESC, name ASC);
+            CREATE INDEX IF NOT EXISTS idx_components_source_stock_name
+                ON components(source, stock DESC, name ASC);
             CREATE TABLE IF NOT EXISTS sync_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 source TEXT NOT NULL,
@@ -367,6 +376,40 @@ class ComponentDB:
         else:
             row = self.conn.execute("SELECT COUNT(*) AS n FROM components").fetchone()
         return row["n"]
+
+    # Per-process count cache. SELECT COUNT(*) on a 4M-row table takes ~700 ms;
+    # on a per-source filtered count it can be ~3 s. We cache for the lifetime
+    # of the DB instance (or a TTL) since the count only changes on sync.
+    _count_cache = None
+    _count_cache_t = 0
+
+    def cached_count(self, source=None, ttl_seconds=300):
+        """COUNT(*) cached for `ttl_seconds`. Use this for paginator headers."""
+        key = source or "__all__"
+        cache = self._count_cache or {}
+        now = time.time()
+        entry = cache.get(key)
+        if entry is not None and now - entry[1] < ttl_seconds:
+            return entry[0]
+        n = self.count(source=source)
+        cache[key] = (n, now)
+        self._count_cache = cache
+        return n
+
+    def invalidate_count_cache(self):
+        self._count_cache = None
+
+    def fast_count_estimate(self):
+        """Cheap approximation: returns sqlite_sequence.seq for `components`,
+        which is the maximum id ever allocated. Always >= true row count and
+        usually very close. O(1) — useful for UIs that just need order of
+        magnitude on a huge catalogue."""
+        try:
+            row = self.conn.execute(
+                "SELECT seq FROM sqlite_sequence WHERE name='components'").fetchone()
+            return int(row["seq"]) if row else 0
+        except sqlite3.OperationalError:
+            return 0
 
     def stats(self):
         return {

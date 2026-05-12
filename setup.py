@@ -20,7 +20,7 @@ _long = open(_readme, encoding="utf-8").read() if os.path.exists(_readme) else "
 
 setup(
     name="circuitforge",
-    version="0.2.1",
+    version="0.2.2",
     description="Open-source EDA suite: schematic capture, SPICE simulation, PCB layout.",
     long_description=_long,
     long_description_content_type="text/markdown",

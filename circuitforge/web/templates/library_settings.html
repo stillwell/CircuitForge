@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Library settings — CircuitForge{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <h1>Library settings</h1>
+  <p class="hint">
+    Tune how the component database is browsed. Settings are stored in
+    your session cookie — change them any time.
+  </p>
+
+  <form method="post">
+    <label>Page size
+      <select name="page_size">
+        {% for n in [10, 25, 50, 100, 200] %}
+          <option value="{{ n }}"
+                  {% if prefs.get('page_size', 25) == n %}selected{% endif %}>
+            {{ n }} rows per page
+          </option>
+        {% endfor %}
+      </select>
+      <span class="hint">Lower values render and scroll faster on big catalogues.</span>
+    </label>
+
+    <label>Default source filter
+      <select name="default_source">
+        <option value="" {% if not prefs.get('default_source') %}selected{% endif %}>
+          (all sources)
+        </option>
+        {% for s in sources %}
+          <option value="{{ s }}"
+                  {% if prefs.get('default_source') == s %}selected{% endif %}>
+            {{ s }}
+          </option>
+        {% endfor %}
+      </select>
+      <span class="hint">Restrict the default view to one loader (e.g. <code>jlcpcb</code>).</span>
+    </label>
+
+    <label>Total-count mode
+      <select name="count_mode">
+        <option value="fast"  {% if prefs.get('count_mode', 'fast') == 'fast'  %}selected{% endif %}>
+          Fast estimate (recommended)
+        </option>
+        <option value="exact" {% if prefs.get('count_mode') == 'exact' %}selected{% endif %}>
+          Exact (slower; cached for 5 min)
+        </option>
+      </select>
+      <span class="hint">
+        On a multi-million-row catalogue an exact <code>COUNT(*)</code> takes
+        seconds. The estimate uses <code>sqlite_sequence</code> for O(1) approx.
+      </span>
+    </label>
+
+    <label>Sort order
+      <select name="sort">
+        <option value="stock" {% if prefs.get('sort', 'stock') == 'stock' %}selected{% endif %}>
+          By stock (high to low), then name
+        </option>
+        <option value="name"  {% if prefs.get('sort') == 'name'  %}selected{% endif %}>
+          By name (A → Z)
+        </option>
+      </select>
+    </label>
+
+    <div class="row" style="margin-top: 24px;">
+      <button type="submit">Save settings</button>
+      <a href="{{ url_for('library') }}" style="margin-left: 16px;">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

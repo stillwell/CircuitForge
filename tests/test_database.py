@@ -80,6 +80,44 @@ class TestComponentDB(unittest.TestCase):
             get_loader("nonsense-source")
 
 
+class TestPaginationHelpers(unittest.TestCase):
+    """Cover the cached-count / fast-estimate / limit+1 paginator path."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.tmpdir, "components.db")
+
+    def test_cached_count_and_fast_estimate(self):
+        from circuitforge.database import ComponentDB, ComponentRecord
+        db = ComponentDB(self.db_path)
+        for i in range(20):
+            db.upsert(ComponentRecord(source="test", source_id=str(i),
+                                      mpn=f"P{i}", name=f"P{i}",
+                                      description="x", category="c"))
+        self.assertEqual(db.count(), 20)
+        self.assertEqual(db.cached_count(), 20)
+        self.assertEqual(db.cached_count(), 20)
+        est = db.fast_count_estimate()
+        self.assertGreaterEqual(est, 20)
+        self.assertEqual(db.cached_count("test"), 20)
+        self.assertEqual(db.cached_count("nonexistent"), 0)
+        db.close()
+
+    def test_pagination_via_limit_plus_one(self):
+        """The limit+1 trick that drives UI 'has_next' without a COUNT."""
+        from circuitforge.database import ComponentDB, ComponentRecord
+        db = ComponentDB(self.db_path)
+        for i in range(7):
+            db.upsert(ComponentRecord(source="t", source_id=str(i),
+                                      mpn=f"P{i:02d}", name=f"P{i:02d}",
+                                      stock=100 - i))
+        rows = db.search("", source="t", limit=4, offset=0)
+        self.assertEqual(len(rows), 4)             # extra row => has_next
+        rows = db.search("", source="t", limit=4, offset=6)
+        self.assertEqual(len(rows), 1)             # last page, no next
+        db.close()
+
+
 class TestLoaderAvailability(unittest.TestCase):
     def test_keyed_loaders_not_available_without_env(self):
         for k in ("DIGIKEY_CLIENT_ID", "DIGIKEY_CLIENT_SECRET",

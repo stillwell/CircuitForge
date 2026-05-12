@@ -71,9 +71,25 @@ table.lib th { color: var(--muted); font-weight: 500;
 .kind.source { background: rgba(255,115,115,.15); color: var(--error); }
 .kind.mechanical { background: rgba(150,150,150,.15); color: #aaa; }
 .hint { color: var(--muted); font-size: 12px; }
-.pager { display: flex; gap: 16px; align-items: center; justify-content: center;
+.pager { display: flex; gap: 8px; align-items: center; justify-content: center;
+         flex-wrap: wrap;
          margin-top: 16px; color: var(--muted); }
+.pager a, .pager .current, .pager .disabled, .pager .ellipsis {
+  display: inline-block; padding: 4px 10px; border-radius: 4px;
+  border: 1px solid var(--line); min-width: 28px; text-align: center;
+}
 .pager a { font-weight: 600; }
+.pager a:hover { background: rgba(78,209,197,.1); text-decoration: none; }
+.pager .current { background: var(--accent); color: #0a0f1d; border-color: var(--accent); }
+.pager .disabled { color: #555; border-color: var(--line); }
+.pager .ellipsis { border: none; }
+.pager form.jump { display: inline-flex; gap: 4px; align-items: center;
+                   margin-left: 12px; }
+.pager form.jump input[type=number] { padding: 4px 6px; }
+table.lib td.num, table.lib th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.toolbar input[name=q] { flex: 3; }
+.toolbar select { flex: 1; }
+.toolbar button { flex: 0; }
 .kind.jlcpcb     { background: rgba(78,209,197,.15); color: var(--accent); }
 .kind.kicad      { background: rgba(180,140,255,.15); color: #b48cff; }
 .kind.digikey    { background: rgba(255,170,0,.15);  color: #ffaa00; }

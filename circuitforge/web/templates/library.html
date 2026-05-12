@@ -2,10 +2,15 @@
 {% block title %}Library — CircuitForge{% endblock %}
 {% block content %}
 <section class="card">
-  <h1>Component library</h1>
+  <div class="row" style="align-items: center; margin-bottom: 8px;">
+    <h1 style="margin: 0; flex: 1;">Component library</h1>
+    <a href="{{ url_for('library_settings') }}" class="hint"
+       style="text-decoration: underline;">⚙ Settings</a>
+  </div>
 
-  <form method="get" class="row">
-    <input name="q" value="{{ query }}" placeholder="Search by name, MPN, manufacturer, description…">
+  <form method="get" class="row toolbar">
+    <input name="q" value="{{ query }}" autofocus
+           placeholder="Search by MPN, manufacturer, description, package…">
     {% if sources %}
     <select name="source">
       <option value="">(all sources)</option>
@@ -14,21 +19,31 @@
       {% endfor %}
     </select>
     {% endif %}
+    {% if page_size_options %}
+    <select name="page_size">
+      {% for n in page_size_options %}
+        <option value="{{ n }}" {% if n == page_size %}selected{% endif %}>{{ n }}/page</option>
+      {% endfor %}
+    </select>
+    {% endif %}
     <button>Search</button>
-    <span class="hint">
-      {% if db_rows is not none %}
-        {{ db_rows|length }} of {{ total }} entries (DB-backed)
-      {% else %}
-        {{ entries|length }} of {{ total }} entries (bundled JSON)
-      {% endif %}
-    </span>
   </form>
 
   {% if db_rows is not none %}
+    {% set start = (page - 1) * page_size + 1 %}
+    {% set end = start + (db_rows|length) - 1 %}
+    <p class="hint" style="margin: 6px 0;">
+      Showing <b>{{ start }}–{{ end }}</b> of
+      {% if total_is_exact %}<b>{{ "{:,}".format(total) }}</b>{% else %}~<b>{{ "{:,}".format(total) }}</b>{% endif %}
+      {% if not total_is_exact %}
+        &nbsp;·&nbsp; <a href="?{% if query %}q={{ query }}&{% endif %}{% if selected_source %}source={{ selected_source }}&{% endif %}page_size={{ page_size }}&page={{ page }}&count=exact">show exact count</a>
+      {% endif %}
+    </p>
+
     <table class="lib">
       <thead><tr>
         <th>Source</th><th>MPN / Name</th><th>Manufacturer</th>
-        <th>Package</th><th>Stock</th><th>Description</th>
+        <th>Package</th><th class="num">Stock</th><th>Description</th>
         <th>Vendor links</th>
       </tr></thead>
       <tbody>
@@ -38,7 +53,7 @@
             <td><code>{{ r.mpn or r.name }}</code></td>
             <td>{{ r.manufacturer }}</td>
             <td>{{ r.package }}</td>
-            <td>{{ r.stock }}</td>
+            <td class="num">{{ "{:,}".format(r.stock) if r.stock else "" }}</td>
             <td>{{ r.description }}</td>
             <td class="vendor-links">
               {% for lk in r.vendor_links %}
@@ -56,14 +71,50 @@
       </tbody>
     </table>
 
+    {% macro pageurl(p) -%}
+      ?{% if query %}q={{ query }}&{% endif %}{% if selected_source %}source={{ selected_source }}&{% endif %}page_size={{ page_size }}&page={{ p }}
+    {%- endmacro %}
+
     <nav class="pager">
       {% if page > 1 %}
-        <a href="?{% if query %}q={{ query }}&{% endif %}{% if selected_source %}source={{ selected_source }}&{% endif %}page={{ page - 1 }}">← Previous</a>
+        <a href="{{ pageurl(1)         }}" title="First page">⏮ First</a>
+        <a href="{{ pageurl(page - 1)  }}" title="Previous page">‹ Prev</a>
+      {% else %}
+        <span class="disabled">⏮ First</span>
+        <span class="disabled">‹ Prev</span>
       {% endif %}
-      <span>Page {{ page }}</span>
-      {% if db_rows|length == page_size %}
-        <a href="?{% if query %}q={{ query }}&{% endif %}{% if selected_source %}source={{ selected_source }}&{% endif %}page={{ page + 1 }}">Next →</a>
+
+      {# small window of nearby pages #}
+      {% set window = 2 %}
+      {% set lo = page - window if page - window > 1 else 1 %}
+      {% if lo > 1 %}
+        <a href="{{ pageurl(1) }}">1</a>
+        {% if lo > 2 %}<span class="ellipsis">…</span>{% endif %}
       {% endif %}
+      {% for p in range(lo, page + window + 1) %}
+        {% if has_next or p <= page %}
+          {% if p == page %}
+            <span class="current">{{ p }}</span>
+          {% else %}
+            <a href="{{ pageurl(p) }}">{{ p }}</a>
+          {% endif %}
+        {% endif %}
+      {% endfor %}
+
+      {% if has_next %}
+        <a href="{{ pageurl(page + 1)  }}" title="Next page">Next ›</a>
+      {% else %}
+        <span class="disabled">Next ›</span>
+      {% endif %}
+
+      <form method="get" class="jump">
+        {% if query %}<input type="hidden" name="q" value="{{ query }}">{% endif %}
+        {% if selected_source %}<input type="hidden" name="source" value="{{ selected_source }}">{% endif %}
+        <input type="hidden" name="page_size" value="{{ page_size }}">
+        Go to <input type="number" name="page" min="1" placeholder="page"
+                     style="width: 5em;">
+        <button>Go</button>
+      </form>
     </nav>
 
   {% else %}
@@ -86,9 +137,9 @@
 
     <p class="hint">
       The bundled catalogue ships with {{ total }} entries.
-      For the full database (hundreds of thousands of parts), run:<br>
-      <code>circuitforge library sync --source jlcpcb</code> &nbsp;or&nbsp;
-      <code>--source local</code> for the bundled set.
+      For the full database (millions of parts) run:<br>
+      <code>circuitforge library sync --source jlcpcb</code>
+      &nbsp;or&nbsp; <code>--source local</code> for the bundled set.
     </p>
   {% endif %}
 </section>

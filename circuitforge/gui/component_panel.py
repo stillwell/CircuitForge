@@ -87,16 +87,25 @@ class ComponentPanel(QtWidgets.QWidget):
 
         controls = QtWidgets.QHBoxLayout()
         self.db_query = QtWidgets.QLineEdit()
-        self.db_query.setPlaceholderText("Search MPN / manufacturer / description…")
+        self.db_query.setPlaceholderText(
+            "Search MPN / manufacturer / description… (lazy — nothing runs until you type or click Browse)")
         controls.addWidget(self.db_query, 1)
         self.db_source = QtWidgets.QComboBox()
         self.db_source.addItem("(all sources)", "")
         controls.addWidget(self.db_source)
+        self.db_page_size = QtWidgets.QComboBox()
+        for n in (10, 25, 50, 100, 200):
+            self.db_page_size.addItem(f"{n}/page", n)
+        self.db_page_size.setCurrentIndex(1)   # 25/page default
+        controls.addWidget(self.db_page_size)
         self.db_btn = QtWidgets.QPushButton("Search")
         controls.addWidget(self.db_btn)
+        self.db_browse_btn = QtWidgets.QPushButton("Browse")
+        self.db_browse_btn.setToolTip("List top-stocked parts (no search query)")
+        controls.addWidget(self.db_browse_btn)
         v.addLayout(controls)
 
-        self.db_status = QtWidgets.QLabel("(DB not yet populated)")
+        self.db_status = QtWidgets.QLabel("(DB tab idle — search above or hit Browse.)")
         self.db_status.setStyleSheet("color: #888; padding: 4px;")
         v.addWidget(self.db_status)
 
@@ -109,43 +118,94 @@ class ComponentPanel(QtWidgets.QWidget):
         self.db_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         v.addWidget(self.db_table, 1)
 
+        # Paginator
+        pager = QtWidgets.QHBoxLayout()
+        self.db_first_btn = QtWidgets.QPushButton("⏮ First")
+        self.db_prev_btn  = QtWidgets.QPushButton("‹ Prev")
+        self.db_page_lbl  = QtWidgets.QLabel("Page —")
+        self.db_page_lbl.setAlignment(QtCore.Qt.AlignCenter)
+        self.db_next_btn  = QtWidgets.QPushButton("Next ›")
+        pager.addWidget(self.db_first_btn)
+        pager.addWidget(self.db_prev_btn)
+        pager.addWidget(self.db_page_lbl, 1)
+        pager.addWidget(self.db_next_btn)
+        for b in (self.db_first_btn, self.db_prev_btn, self.db_next_btn):
+            b.setEnabled(False)
+        v.addLayout(pager)
+
+        # Pagination state
+        self._db_page = 1
+        self._db_initialised = False
+
+        # Wire up
         self.db_btn.clicked.connect(self._on_db_search)
+        self.db_browse_btn.clicked.connect(self._on_db_browse)
         self.db_query.returnPressed.connect(self._on_db_search)
-        self.db_source.currentIndexChanged.connect(self._on_db_search)
+        self.db_source.currentIndexChanged.connect(self._on_db_filter_changed)
+        self.db_page_size.currentIndexChanged.connect(self._on_db_filter_changed)
+        self.db_first_btn.clicked.connect(lambda: self._go_page(1))
+        self.db_prev_btn.clicked.connect(lambda: self._go_page(self._db_page - 1))
+        self.db_next_btn.clicked.connect(lambda: self._go_page(self._db_page + 1))
+
         self.tabs.addTab(tab, "Database")
+        QtCore.QTimer.singleShot(0, self._init_db_lazy)
 
-        # Populate source dropdown + initial search
-        QtCore.QTimer.singleShot(0, self._init_db)
-
-    def _init_db(self):
+    def _init_db_lazy(self):
+        """Cheap probe — uses O(1) fast_count_estimate; runs no expensive
+        query. Populates the sources dropdown and the status line only."""
         try:
             from circuitforge.database import ComponentDB
             with ComponentDB() as db:
-                total = db.count()
-                if total == 0:
+                est = db.fast_count_estimate()
+                if est == 0:
                     self.db_status.setText(
                         "Database is empty. Run "
                         "<code>circuitforge library sync --source local</code> "
-                        "or another loader to populate it.")
+                        "(or any other loader) to populate it.")
                     return
                 for s in db.sources():
                     self.db_source.addItem(s, s)
                 self.db_status.setText(
-                    f"{total:,} components across {len(db.sources())} source(s).")
-                self._do_search("", "", limit=50)
+                    f"~{est:,} components available. Type to search or "
+                    f"hit <b>Browse</b> to list the first page.")
+                self._db_initialised = True
         except Exception as e:
             self.db_status.setText(f"DB unavailable: {e}")
 
     def _on_db_search(self, *_):
-        q = self.db_query.text()
-        src = self.db_source.currentData() or None
-        self._do_search(q, src, limit=100)
+        self._db_page = 1
+        self._do_search()
 
-    def _do_search(self, query, source, limit):
+    def _on_db_browse(self):
+        self.db_query.clear()
+        self._db_page = 1
+        self._do_search()
+
+    def _on_db_filter_changed(self, *_):
+        if self._db_initialised:
+            self._db_page = 1
+            self._do_search()
+
+    def _go_page(self, page):
+        self._db_page = max(1, page)
+        self._do_search()
+
+    def _do_search(self):
+        if not self._db_initialised:
+            return
+        query = self.db_query.text()
+        source = self.db_source.currentData() or None
+        page_size = self.db_page_size.currentData() or 25
+        page = self._db_page
         try:
-            from circuitforge.database import ComponentDB, vendor_links
-            with ComponentDB() as db:
-                rows = db.search(query, source=source, limit=limit)
+            from circuitforge.database import ComponentDB
+            db = ComponentDB()
+            rows = db.search(query, source=source,
+                             limit=page_size + 1,
+                             offset=(page - 1) * page_size)
+            has_next = len(rows) > page_size
+            rows = rows[:page_size]
+            db.close()
         except Exception as e:
             self.db_status.setText(f"DB error: {e}")
             return
@@ -159,12 +219,18 @@ class ComponentPanel(QtWidgets.QWidget):
             stock_item = QtWidgets.QTableWidgetItem(f"{r.stock:,}" if r.stock else "")
             stock_item.setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
             self.db_table.setItem(i, 4, stock_item)
-
             self.db_table.setCellWidget(i, 5, self._build_link_row(r))
 
+        start = (page - 1) * page_size + 1
+        end = start + len(rows) - 1 if rows else start - 1
+        self.db_page_lbl.setText(f"Page {page} — rows {start:,}–{end:,}")
+        self.db_first_btn.setEnabled(page > 1)
+        self.db_prev_btn.setEnabled(page > 1)
+        self.db_next_btn.setEnabled(has_next)
+        self.db_status.setText(
+            f"{len(rows)} rows returned "
+            f"(query={query!r}, source={source or 'any'}, {page_size}/page)")
         self.db_table.resizeColumnsToContents()
-        self.db_status.setText(f"{len(rows)} results "
-                               f"(query={query!r}, source={source or 'any'})")
 
     def _build_link_row(self, record):
         from circuitforge.database import vendor_links
