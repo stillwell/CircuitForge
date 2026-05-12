@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Workbench — CircuitForge{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Workbench</h1>
+  <p class="hint">
+    Upload a SPICE deck, KiCad board, or KiCad schematic, then run any
+    of the actions below. Files are stored in your per-session scratch
+    directory and stay there until you click <b>Clear</b>.
+  </p>
+
+  <h2>Upload</h2>
+  <form method="post" enctype="multipart/form-data" class="row">
+    <input type="file" name="file" required>
+    <select name="kind">
+      <option value="spice">SPICE deck (.cir / .sp / .net)</option>
+      <option value="board">KiCad board (.kicad_pcb)</option>
+      <option value="sch">KiCad schematic (.kicad_sch)</option>
+    </select>
+    <button>Upload</button>
+  </form>
+
+  <h2>Currently loaded</h2>
+  <table class="lib">
+    <thead><tr><th>Artefact</th><th>State</th><th>Actions</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>SPICE deck</td>
+        <td>{{ "loaded" if loaded.deck else "—" }}</td>
+        <td>
+          {% if loaded.deck %}
+            <a class="btn" href="{{ url_for('export_spice') }}">Download .cir</a>
+            <a class="btn" href="{{ url_for('export_bom') }}">BOM (CSV)</a>
+            <a class="btn" href="{{ url_for('index') }}">→ Simulate</a>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td>KiCad board</td>
+        <td>{{ "loaded" if loaded.board else "—" }}</td>
+        <td>
+          {% if loaded.board %}
+            <a class="btn" href="{{ url_for('export_gerber') }}">Gerber (zip)</a>
+            <a class="btn" href="{{ url_for('export_drill') }}">Drill (.drl)</a>
+            <a class="btn" href="{{ url_for('export_svg') }}">SVG</a>
+            <a class="btn" href="{{ url_for('pcb_drc') }}">DRC</a>
+            <form method="post" action="{{ url_for('pcb_autoroute') }}" style="display:inline">
+              <button class="btn">Autoroute</button>
+            </form>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td>KiCad schematic</td>
+        <td>{{ "loaded" if loaded.schematic else "—" }}</td>
+        <td>—</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <form method="post" action="{{ url_for('workbench_clear') }}"
+        style="margin-top: 16px;">
+    <button class="btn-danger" type="submit">Clear workbench</button>
+  </form>
+</section>
+{% endblock %}

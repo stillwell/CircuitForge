@@ -5,11 +5,33 @@ viewer, library browser, PCB export. No external CDNs at runtime (Plotly is
 served locally if vendored; otherwise rendered via inline canvas).
 """
 
+import io
 import os
 import secrets
+import tempfile
+import zipfile
 
 from flask import (Flask, request, jsonify, render_template, redirect,
                    url_for, session, flash, send_file, abort)
+
+
+def _session_dir(create=True):
+    """Per-user scratch directory keyed by Flask session id."""
+    sid = session.get("sid")
+    if sid is None:
+        sid = secrets.token_hex(16)
+        session["sid"] = sid
+    root = os.environ.get("CIRCUITFORGE_DATA_DIR",
+                          os.path.join(os.path.dirname(__file__), "..", "..", "data"))
+    d = os.path.abspath(os.path.join(root, "web_sessions", sid))
+    if create:
+        os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _saved_path(name):
+    p = os.path.join(_session_dir(create=False), name)
+    return p if os.path.exists(p) else None
 
 from circuitforge import resources
 
@@ -204,6 +226,141 @@ def create_app(config=None):
         if not p:
             abort(404)
         return send_file(p)
+
+    # ===== Workbench: upload artefacts, then export / DRC / autoroute =====
+
+    @app.route("/workbench", methods=["GET", "POST"])
+    def workbench():
+        if not session.get("user"):
+            return redirect(url_for("login"))
+        d = _session_dir()
+        if request.method == "POST":
+            f = request.files.get("file")
+            kind = request.form.get("kind")
+            if not f or not kind:
+                flash("Pick a file and a kind.", "error")
+                return redirect(url_for("workbench"))
+            target = {"spice": "deck.cir",
+                      "board": "board.kicad_pcb",
+                      "sch":   "schematic.kicad_sch"}.get(kind)
+            if not target:
+                flash(f"Unknown artefact kind: {kind}", "error")
+                return redirect(url_for("workbench"))
+            f.save(os.path.join(d, target))
+            flash(f"Uploaded {f.filename} as {kind}.", "message")
+            return redirect(url_for("workbench"))
+
+        # Snapshot of what's loaded for this session.
+        loaded = {
+            "deck": _saved_path("deck.cir"),
+            "board": _saved_path("board.kicad_pcb"),
+            "schematic": _saved_path("schematic.kicad_sch"),
+        }
+        return render_template("workbench.html", loaded=loaded)
+
+    @app.route("/workbench/clear", methods=["POST"])
+    def workbench_clear():
+        if not session.get("user"):
+            return redirect(url_for("login"))
+        import shutil
+        d = _session_dir(create=False)
+        if os.path.isdir(d):
+            shutil.rmtree(d)
+        flash("Workbench cleared.", "message")
+        return redirect(url_for("workbench"))
+
+    # ----- exports -----
+    @app.route("/export/spice")
+    def export_spice():
+        path = _saved_path("deck.cir")
+        if not path:
+            abort(404)
+        return send_file(path, as_attachment=True, download_name="circuit.cir")
+
+    @app.route("/export/bom")
+    def export_bom():
+        path = _saved_path("deck.cir")
+        if not path:
+            abort(404)
+        from circuitforge.io import read_spice_deck, write_bom_csv
+        nl, _ = read_spice_deck(path)
+        out = os.path.join(_session_dir(), "bom.csv")
+        write_bom_csv(nl, out)
+        return send_file(out, as_attachment=True, download_name="bom.csv")
+
+    @app.route("/export/gerber")
+    def export_gerber():
+        pcb = _saved_path("board.kicad_pcb")
+        if not pcb:
+            abort(404)
+        from circuitforge.io import read_kicad_pcb, write_gerber_set
+        with tempfile.TemporaryDirectory() as tmp:
+            gbr_dir = os.path.join(tmp, "gerbers")
+            paths = write_gerber_set(read_kicad_pcb(pcb), gbr_dir)
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                for p in paths:
+                    zf.write(p, arcname=os.path.basename(p))
+            buf.seek(0)
+        return send_file(buf, mimetype="application/zip",
+                         as_attachment=True, download_name="gerbers.zip")
+
+    @app.route("/export/drill")
+    def export_drill():
+        pcb = _saved_path("board.kicad_pcb")
+        if not pcb:
+            abort(404)
+        from circuitforge.io import read_kicad_pcb, write_excellon
+        out = os.path.join(_session_dir(), "board.drl")
+        write_excellon(read_kicad_pcb(pcb), out)
+        return send_file(out, as_attachment=True, download_name="board.drl")
+
+    @app.route("/export/svg")
+    def export_svg():
+        pcb = _saved_path("board.kicad_pcb")
+        if not pcb:
+            abort(404)
+        from circuitforge.io import read_kicad_pcb, export_pcb_svg
+        out = os.path.join(_session_dir(), "board.svg")
+        export_pcb_svg(read_kicad_pcb(pcb), out)
+        return send_file(out, as_attachment=True, download_name="board.svg")
+
+    # ----- DRC + autoroute -----
+    @app.route("/pcb/drc")
+    def pcb_drc():
+        if not session.get("user"):
+            return redirect(url_for("login"))
+        pcb = _saved_path("board.kicad_pcb")
+        if not pcb:
+            flash("No board uploaded. Use the Workbench first.", "error")
+            return redirect(url_for("workbench"))
+        from circuitforge.io import read_kicad_pcb
+        from circuitforge.pcb import DRC
+        board = read_kicad_pcb(pcb)
+        violations = DRC().run(board)
+        return render_template("drc.html", violations=violations,
+                               board_stats=board.stats())
+
+    @app.route("/pcb/autoroute", methods=["POST"])
+    def pcb_autoroute():
+        if not session.get("user"):
+            return redirect(url_for("login"))
+        pcb = _saved_path("board.kicad_pcb")
+        if not pcb:
+            flash("No board uploaded.", "error")
+            return redirect(url_for("workbench"))
+        from circuitforge.io import read_kicad_pcb, write_kicad_pcb
+        from circuitforge.pcb import GridRouter
+        board = read_kicad_pcb(pcb)
+        rats = board.ratsnest()
+        if not rats:
+            flash("Ratsnest is empty — nothing to route.", "message")
+            return redirect(url_for("workbench"))
+        routed = GridRouter(board).route_netlist(rats)
+        # Save the routed board back so the user can re-download it.
+        write_kicad_pcb(board, path=os.path.join(_session_dir(), "board.kicad_pcb"))
+        flash(f"Autoroute: {len(routed)} of {len(rats)} routed.", "message")
+        return redirect(url_for("workbench"))
 
     return app
 

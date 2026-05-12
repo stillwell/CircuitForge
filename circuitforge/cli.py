@@ -71,6 +71,10 @@ def main(argv=None):
                        help="Transient analysis")
     p_sim.add_argument("--probe", action="append", default=[],
                        help="Net to print (repeatable)")
+    p_sim.add_argument("--method", choices=("be", "trap"), default="be",
+                       help="Transient integration method (default: be)")
+    p_sim.add_argument("--ic", action="append", default=[],
+                       help="Initial condition NET=V (repeatable)")
     p_sim.add_argument("-o", "--output", help="Write results CSV to this path")
 
     p_conv = sub.add_parser("convert", help="Convert between formats")
@@ -163,7 +167,13 @@ def _cmd_simulate(args):
     if args.transient:
         t0, t1, dt = args.transient
         from circuitforge.core.units import parse_value
-        result = sim.tran(parse_value(t1), parse_value(dt), parse_value(t0))
+        initial = {}
+        for ic in args.ic:
+            if "=" in ic:
+                net, v = ic.split("=", 1)
+                initial[net.strip()] = parse_value(v.strip())
+        result = sim.tran(parse_value(t1), parse_value(dt), parse_value(t0),
+                          method=args.method, initial=initial or None)
         _print_summary(result, args.probe)
     if args.output and result is not None:
         _write_csv(result, args.output)

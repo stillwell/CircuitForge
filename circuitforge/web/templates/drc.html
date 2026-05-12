@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}DRC — CircuitForge{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Design Rule Check</h1>
+  <p class="hint">
+    Board stats: {{ board_stats }}
+  </p>
+
+  {% if violations|length == 0 %}
+    <p style="color:#6ee7b7;font-size:18px;">✅ No DRC violations.</p>
+  {% else %}
+    <p style="color:#ff7373;font-size:18px;">
+      {{ violations|length }} violation(s).
+    </p>
+    <table class="lib">
+      <thead><tr>
+        <th>Severity</th><th>Rule</th><th>Message</th><th>Location</th>
+      </tr></thead>
+      <tbody>
+        {% for v in violations %}
+          <tr>
+            <td><span class="kind {{ v.severity }}">{{ v.severity }}</span></td>
+            <td><code>{{ v.rule }}</code></td>
+            <td>{{ v.message }}</td>
+            <td>{{ v.location if v.location else "" }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  <p style="margin-top:16px;">
+    <a href="{{ url_for('workbench') }}">← Back to workbench</a>
+  </p>
+</section>
+{% endblock %}

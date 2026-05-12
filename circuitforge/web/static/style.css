@@ -112,6 +112,24 @@ table.lib td.num, table.lib th.num { text-align: right; font-variant-numeric: ta
 }
 .vendor-link img { display: block; }
 
+.btn, button.btn {
+  display: inline-block; padding: 6px 12px; margin: 2px;
+  background: rgba(78,209,197,.15); color: var(--accent);
+  border-radius: 4px; border: 1px solid rgba(78,209,197,.3);
+  font-size: 12px; text-decoration: none; cursor: pointer;
+}
+.btn:hover { background: rgba(78,209,197,.25); text-decoration: none; }
+.btn-danger {
+  background: rgba(255,115,115,.15); color: var(--error);
+  border: 1px solid rgba(255,115,115,.3);
+  padding: 6px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;
+}
+.btn-danger:hover { background: rgba(255,115,115,.25); }
+
+.kind.error    { background: rgba(255,115,115,.18); color: var(--error); }
+.kind.warning  { background: rgba(255,170,0,.18); color: #ffaa00; }
+.kind.info     { background: rgba(78,209,197,.18); color: var(--accent); }
+
 canvas { background: #06080f; border-radius: 4px; width: 100%;
          border: 1px solid var(--line); }
 #status { color: var(--muted); font-size: 12px; flex: 0; }
