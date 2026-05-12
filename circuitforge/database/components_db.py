@@ -298,33 +298,51 @@ class ComponentDB:
     # ---- queries ----
     def search(self, query="", source=None, category=None, package=None,
                manufacturer=None, limit=50, offset=0):
+        """Search the catalogue. Combines FTS for `query` with structured
+        SQL filters for source/category/package/manufacturer."""
         clauses, args = [], []
-        if query:
-            if self.fts_available:
-                ids = [r["rowid"] for r in self.conn.execute(
-                    "SELECT rowid FROM components_fts WHERE components_fts MATCH ? "
-                    "ORDER BY rank LIMIT ? OFFSET ?",
-                    (self._fts_escape(query), limit, offset))]
-                if not ids:
-                    return []
-                placeholders = ",".join("?" for _ in ids)
-                rows = self.conn.execute(
-                    f"SELECT * FROM components WHERE id IN ({placeholders})", ids).fetchall()
-                # preserve fts rank order
-                by_id = {r["id"]: r for r in rows}
-                return [ComponentRecord.from_row(by_id[i]) for i in ids if i in by_id]
-            # No FTS — fall back to LIKE
+        fts_ids = None
+        if query and self.fts_available:
+            # First pass: pull a generous superset of FTS-matching IDs, then
+            # apply structured filters in the second pass. We multiply the
+            # caller's limit so structured filters don't starve.
+            fts_limit = (limit + offset) * 10 + 200
+            fts_rows = self.conn.execute(
+                "SELECT rowid FROM components_fts WHERE components_fts MATCH ? "
+                "ORDER BY rank LIMIT ?",
+                (self._fts_escape(query), fts_limit)).fetchall()
+            fts_ids = [r["rowid"] for r in fts_rows]
+            if not fts_ids:
+                return []
+            placeholders = ",".join("?" for _ in fts_ids)
+            clauses.append(f"id IN ({placeholders})")
+            args.extend(fts_ids)
+        elif query:
+            # No FTS — fall back to LIKE.
             q = f"%{query}%"
-            clauses.append("(name LIKE ? OR mpn LIKE ? OR manufacturer LIKE ? OR description LIKE ?)")
+            clauses.append(
+                "(name LIKE ? OR mpn LIKE ? OR manufacturer LIKE ? OR description LIKE ?)")
             args.extend([q, q, q, q])
         if source:        clauses.append("source = ?");        args.append(source)
         if category:      clauses.append("category LIKE ?");   args.append(f"%{category}%")
         if package:       clauses.append("package = ?");       args.append(package)
         if manufacturer:  clauses.append("manufacturer = ?");  args.append(manufacturer)
         where = "WHERE " + " AND ".join(clauses) if clauses else ""
-        rows = self.conn.execute(
-            f"SELECT * FROM components {where} ORDER BY stock DESC, name ASC LIMIT ? OFFSET ?",
-            args + [limit, offset]).fetchall()
+
+        if fts_ids:
+            # Preserve FTS rank order by joining on a temporary case expression
+            order_case = "CASE id " + " ".join(
+                f"WHEN {fid} THEN {i}" for i, fid in enumerate(fts_ids)
+            ) + " END"
+            rows = self.conn.execute(
+                f"SELECT * FROM components {where} "
+                f"ORDER BY {order_case} LIMIT ? OFFSET ?",
+                args + [limit, offset]).fetchall()
+        else:
+            rows = self.conn.execute(
+                f"SELECT * FROM components {where} "
+                f"ORDER BY stock DESC, name ASC LIMIT ? OFFSET ?",
+                args + [limit, offset]).fetchall()
         return [ComponentRecord.from_row(r) for r in rows]
 
     def get(self, source, source_id):

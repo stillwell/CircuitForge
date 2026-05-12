@@ -77,8 +77,16 @@ class Loader:
                         os.replace(tmp, dest_path)
                         return dest_path
                     return resp.read()
-            except (urllib.error.URLError, urllib.error.HTTPError,
-                    TimeoutError, ConnectionResetError) as e:
+            except urllib.error.HTTPError as e:
+                # 404 / 403 / 410 are terminal — caller may want to handle
+                # them (e.g. to stop probing for next-volume URLs).
+                if e.code in (403, 404, 410):
+                    raise LoaderError(
+                        f"http_get({url}) failed: HTTP {e.code}") from e
+                last_err = e
+                if attempt + 1 < retries:
+                    time.sleep(backoff ** attempt)
+            except (urllib.error.URLError, TimeoutError, ConnectionResetError) as e:
                 last_err = e
                 if attempt + 1 < retries:
                     time.sleep(backoff ** attempt)

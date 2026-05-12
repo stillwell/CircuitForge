@@ -277,19 +277,32 @@ status with `circuitforge library sources` or
 
 | | |
 |---|---|
-| **Provides** | ~500 000 SMD-assembly parts with stock levels and price breaks |
+| **Provides** | ~7 million SMD-assembly parts with live stock and price breaks |
 | **Source** | `https://yaqwsx.github.io/jlcparts/data/` (community CC0 mirror, refreshed daily) |
 | **Auth** | none |
-| **Network** | bulk JSON download (~hundreds of MB on first sync; cached for 24 h) |
+| **Network** | **multi-volume zip — `cache.zip` plus ~40 × 50 MB `cache.zNN` volumes (~2 GB total)** on first sync; cached for 24 h |
+| **Disk** | reassembled archive is ~2 GB; the extracted `cache.sqlite3` is **~27 GB** |
+| **Tools required** | `unzip` (Info-Zip) — used to extract from a PKZip-spanned archive |
 | **Pricing/stock** | yes (live snapshot from JLCPCB) |
 | **Datasheets** | yes (URLs to vendor PDFs) |
 | **Cache** | `data/loader_cache/jlcpcb/` (24 h TTL) |
 
 ```bash
-circuitforge library sync --source jlcpcb              # full pull
-circuitforge library sync --source jlcpcb --limit 1000 # quick smoke test
-circuitforge library sync --source jlcpcb --clear      # wipe + re-pull
+circuitforge library sync --source jlcpcb              # full pull (~2 GB download)
+circuitforge library sync --source jlcpcb --limit 1000 # cap rows ingested (still full DL)
+circuitforge library sync --source jlcpcb --clear      # wipe DB rows then re-sync
+JLCPCB_SKIP_DOWNLOAD=1 \                               # re-iterate from an existing
+    circuitforge library sync --source jlcpcb          #   cache without re-downloading
 ```
+
+Optional env knobs:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `JLCPCB_BASE_URL` | `https://yaqwsx.github.io/jlcparts/data/` | mirror override |
+| `JLCPCB_MAX_VOLUMES` | `80` | volume-probe upper bound (the archive has ~40 today) |
+| `JLCPCB_MIN_ARCHIVE_BYTES` | `524288000` (500 MB) | sanity-check on the reassembled zip |
+| `JLCPCB_SKIP_DOWNLOAD` | unset | re-extract / re-iterate offline |
 
 #### `kicad` — official KiCad symbol libraries
 
