@@ -24,6 +24,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         qrencode \
         ca-certificates \
         tini \
+        unzip \
+        zip \
+        git \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 1000 circuitforge \
     && useradd --system --uid 1000 --gid 1000 --no-create-home \

@@ -21,6 +21,36 @@ Developed by **Robert Andrew Stillwell** at [Enlightec Ltd.](https://www.enlight
 
 ---
 
+## What's new in 0.2.0
+
+- **Cloud-loadable component database.** New SQLite-backed catalog
+  (`data/components.db`) with FTS5 full-text search, fed by seven
+  loaders: `jlcpcb` (~7 M parts via the CC0 yaqwsx/jlcparts mirror),
+  `kicad` (every symbol in `gitlab.com/kicad/libraries/kicad-symbols`),
+  `digikey`, `mouser`, `octopart`/Nexar, and the bundled JSON `local`
+  set — plus an `all` mode that runs every available loader. See
+  [Component Database & Loaders](#component-database--loaders).
+- **JLCPCB loader rewritten** for the upstream PKZip-spanned SQLite
+  format (~2 GB download, ~27 GB extracted, ~7.1 M components).
+  `cat`-based volume reassembly works around an Info-Zip `zip -s 0`
+  bug. New env knobs: `JLCPCB_BASE_URL`, `JLCPCB_MAX_VOLUMES`,
+  `JLCPCB_SKIP_DOWNLOAD`, `JLCPCB_MIN_ARCHIVE_BYTES`.
+- **Search filters fixed.** `--source`, `--category`, `--package`, and
+  `--manufacturer` filters now apply correctly when combined with a
+  full-text query (previously the FTS branch returned early without
+  applying them).
+- **CLI**: new `library sync|search|show|stats|sources` subcommands.
+- **REST**: new `/api/v1/library/{db,db/<id>,db/stats,sources,sync}` endpoints.
+- **Web**: `/library` auto-switches to the DB-backed paginated view once
+  the catalog has rows.
+- **Docker image** ships with `unzip`, `zip`, and `git` so the JLCPCB
+  and KiCad loaders work inside the container.
+
+Published as **`enlightec/circuitforge:0.2.0`** and **`:latest`** on
+[Docker Hub](https://hub.docker.com/r/enlightec/circuitforge).
+
+---
+
 ## Table of Contents
 
 - [Features](#features)
@@ -209,17 +239,41 @@ before each pull.
 
 ## Docker Hub Images
 
+Published at **[`enlightec/circuitforge`](https://hub.docker.com/r/enlightec/circuitforge)**.
+Both pinned and rolling tags are kept in sync after every release:
+
+| Tag                              | Notes                              |
+|----------------------------------|------------------------------------|
+| `enlightec/circuitforge:0.2.0`   | current release (immutable)        |
+| `enlightec/circuitforge:latest`  | alias of the newest `0.x.y`        |
+| `enlightec/circuitforge:0.1.0`   | previous release (no DB / loaders) |
+
+The runtime image bundles `unzip`, `zip`, and `git` so the in-container
+`jlcpcb` and `kicad` loaders work out of the box (JLCPCB needs ~30 GB of
+free volume space for the extracted SQLite cache — bind-mount a large
+host directory to `/opt/circuitforge/data`).
+
 ```bash
-# Local build:
+# Quick pull-and-run:
+docker run -p 8080:8080 \
+    -e CIRCUITFORGE_JWT_SECRET=$(openssl rand -hex 32) \
+    enlightec/circuitforge:0.2.0
+
+# Compose stack (api + web), local build:
 docker compose up
 
-# Published image:
+# Compose stack against the published image:
 export CIRCUITFORGE_JWT_SECRET=$(openssl rand -hex 32)
 export CIRCUITFORGE_SESSION_SECRET=$(openssl rand -hex 32)
 ./start_docker_hub.sh
 
 # With ngrok tunnel (after `./install.sh --ngrok-login`):
 ./start_docker_hub.sh ngrok
+
+# Run a one-shot library sync from inside the container:
+docker run --rm \
+    -v /var/lib/circuitforge:/opt/circuitforge/data \
+    enlightec/circuitforge:0.2.0 cli library sync --source local
 ```
 
 ---
